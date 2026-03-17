@@ -9,19 +9,41 @@ import java.net.Socket;
 
 public class GameClient {
 
+    private static final String[][] HANGMAN_STAGES = {
+        {"       ", "       ", "       ", "       ", "       ", "       ", "       "},
+        {"       ", "       ", "       ", "       ", "       ", "       ", "========="},
+        {"      |", "      |", "      |", "      |", "      |", "      |", "========="},
+        {"   ---+", "      |", "      |", "      |", "      |", "      |", "========="},
+        {"  +---+", "  |   |", "      |", "      |", "      |", "      |", "========="},
+        {"  +---+", "  |   |", "  O   |", "      |", "      |", "      |", "========="},
+        {"  +---+", "  |   |", "  O   |", "  |   |", "      |", "      |", "========="},
+        {"  +---+", "  |   |", "  O   |", "  |   |", " /    |", "      |", "========="},
+        {"  +---+", "  |   |", "  O   |", "  |   |", " / \\  |", "      |", "========="},
+        {"  +---+", "  |   |", "  O   |", " /|   |", " / \\  |", "      |", "========="},
+        {"  +---+", "  |   |", "  O   |", " /|\\  |", " / \\  |", "      |", "========="}
+    };
+
     private final String host;
     private final int port;
     private Socket socket;
     private ObjectOutputStream out;
     private Thread listenerThread;
     private volatile boolean connected = false;
-    private String currentWordState;
-    private char[] guessedLetters;
 
+    private volatile String currentWordDisplay = "";
+    private volatile int errorCount = 0;
+    private volatile String usedLetters = "";
+    private volatile String statusMessage = "Connexion au serveur...";
 
-    public GameClient(String host, int port) {
+    private Terminal terminal;
+
+    private int lastLineCount = 0;
+    private volatile boolean userInputPending = false;
+
+    public GameClient(String host, int port, Terminal terminal) {
         this.host = host;
         this.port = port;
+        this.terminal = terminal;
     }
 
     public void connect() throws IOException {
@@ -29,7 +51,6 @@ public class GameClient {
         out = new ObjectOutputStream(socket.getOutputStream());
         out.flush();
         connected = true;
-        System.out.println("[CLIENT] Connected to server " + host + ":" + port);
 
         listenerThread = new Thread(this::listenForMessages, "client-listener");
         listenerThread.setDaemon(true);
@@ -37,39 +58,157 @@ public class GameClient {
     }
 
     private void listenForMessages() {
+        String fatalError = null;
         try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
             while (connected) {
                 Message msg = (Message) in.readObject();
-                System.out.println("[CLIENT] Received: " + msg);
-                onMessageReceived(msg);
+                handleMessage(msg);
             }
         } catch (EOFException | java.net.SocketException ignored) {
         } catch (IOException | ClassNotFoundException e) {
             if (connected) {
-                System.err.println("[CLIENT] Receive error: " + e.getMessage());
+                fatalError = "Erreur de reception : " + e.getMessage();
             }
         } finally {
             connected = false;
+            if (fatalError != null) {
+                showFatalError(fatalError);
+                disconnect();
+                System.exit(1);
+            } else {
+                statusMessage = "Deconnecte du serveur.";
+                redraw();
+            }
         }
     }
 
-    protected void onMessageReceived(Message msg) {
+    private void handleMessage(Message msg) {
+        switch (msg.getType()) {
+            case CURRENT_WORD -> {
+                currentWordDisplay = msg.getContent();
+                errorCount = msg.getErrorCount();
+                usedLetters = msg.getUsedLetters();
+                if (statusMessage.equals("Connexion au serveur...")) {
+                    statusMessage = "Devinez le mot !";
+                }
+            }
+            case GUESS -> {
+                errorCount = msg.getErrorCount();
+                usedLetters = msg.getUsedLetters();
+                statusMessage = "Mauvaise lettre : " + msg.getContent();
+            }
+            case ERROR -> {
+                errorCount = msg.getErrorCount();
+                usedLetters = msg.getUsedLetters();
+            }
+            case WIN  -> statusMessage = "BRAVO ! " + msg.getContent();
+            case LOSE -> statusMessage = "PERDU... " + msg.getContent();
+            case NEW_GAME -> {
+                currentWordDisplay = msg.getContent();
+                errorCount = 0;
+                usedLetters = "";
+                statusMessage = "Nouvelle partie ! Devinez le mot.";
+            }
+            default -> statusMessage = msg.getContent();
+        }
+        redraw();
     }
 
-    // Afficher un message centrée dans la console (au millieu de l'ecran et clear le reste de la page)
-    public void ShowMessage(String message) {
-        System.out.print("\033[H\033[2J");
-        System.out.flush();
-        int consoleHeight = 30; // Valeur par défaut
-        try (Terminal terminal = TerminalBuilder.builder().dumb(true).build()) {
+    synchronized void showFatalError(String message) {
+        int termWidth = 80;
+        int termHeight = 24;
+        if (terminal != null) {
+            int w = terminal.getWidth();
             int h = terminal.getHeight();
-            if (h > 0) consoleHeight = h;
-        } catch (IOException ignored) {}
-        int padding = (consoleHeight - 1) / 2;
-        for (int i = 0; i < padding; i++) {
-            System.out.println();
+            if (w > 0) termWidth = w;
+            if (h > 0) termHeight = h;
         }
-        System.out.println(message);
+
+        StringBuilder sb = new StringBuilder();
+
+        if (lastLineCount > 0) {
+            int linesToGoUp = lastLineCount + (userInputPending ? 1 : 0);
+            sb.append("\033[").append(linesToGoUp).append("A\r\033[J");
+        }
+
+        int topPad = Math.max(0, (termHeight - 3) / 2);
+        for (int i = 0; i < topPad; i++) sb.append("\n");
+
+        sb.append("  ").append(centerPad("[ ERREUR ]", termWidth - 4)).append("\n");
+        sb.append("\n");
+        sb.append("  ").append(centerPad(message, termWidth - 4)).append("\n");
+
+        System.out.print(sb);
+        System.out.flush();
+    }
+
+    synchronized void redraw() {
+        int termWidth = 80;
+        if (terminal != null) {
+            int w = terminal.getWidth();
+            if (w > 0) termWidth = w;
+        }
+
+        int stage = Math.min(errorCount, Message.MAX_ERRORS);
+        String[] hangman = HANGMAN_STAGES[stage];
+
+        StringBuilder display = new StringBuilder();
+
+        String title = " LE PENDU ";
+        String border = "=".repeat(termWidth - 4);
+        display.append("  ").append(border).append("\n");
+        display.append("  ").append(centerPad(title, termWidth - 4)).append("\n");
+        display.append("  ").append(border).append("\n\n");
+
+        String[] info = {
+            "",
+            "Mot:      " + (currentWordDisplay.isEmpty() ? "..." : currentWordDisplay),
+            "",
+            "Lettres:  " + (usedLetters.isEmpty() ? "aucune" : usedLetters),
+            "Erreurs:  " + errorCount + " / " + Message.MAX_ERRORS,
+            "",
+            ""
+        };
+
+        for (int i = 0; i < hangman.length; i++) {
+            String h = "  " + hangman[i];
+            String left = h + " ".repeat(Math.max(0, 18 - h.length()));
+            String right = info[i].isEmpty() ? "" : "    " + info[i];
+            display.append(left).append(right).append("\n");
+        }
+
+        display.append("\n  ").append("-".repeat(Math.min(termWidth - 4, 60))).append("\n");
+
+        if (!statusMessage.isEmpty()) {
+            display.append("\n  > ").append(statusMessage).append("\n");
+        }
+
+        display.append("\n  Entrez une lettre : ");
+
+        int newlineCount = 0;
+        for (int i = 0; i < display.length(); i++) {
+            if (display.charAt(i) == '\n') newlineCount++;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        if (lastLineCount > 0) {
+            int linesToGoUp = lastLineCount + (userInputPending ? 1 : 0);
+            sb.append("\033[").append(linesToGoUp).append("A");
+            sb.append("\r");
+            sb.append("\033[J");
+        }
+        userInputPending = false;
+        lastLineCount = newlineCount;
+
+        sb.append(display);
+        System.out.print(sb);
+        System.out.flush();
+    }
+
+    private String centerPad(String text, int width) {
+        if (text.length() >= width) return text;
+        int pad = (width - text.length()) / 2;
+        return " ".repeat(pad) + text;
     }
 
     public void send(Message msg) throws IOException {
@@ -82,44 +221,93 @@ public class GameClient {
         connected = false;
         try {
             if (socket != null && !socket.isClosed()) socket.close();
-        } catch (IOException ignored) {
+        } catch (IOException ignored) {}
+        if (terminal != null) {
+            try { terminal.close(); } catch (IOException ignored) {}
         }
-        System.out.println("[CLIENT] Disconnected.");
     }
 
     public boolean isConnected() { return connected; }
 
-    public static void main() throws IOException {
-        // Clear la console
-        System.out.print("\033[H\033[2J");
+    public static void main(String[] args) throws IOException {
+        Terminal terminal = null;
+        try {
+            terminal = TerminalBuilder.builder().system(true).build();
+        } catch (IOException e) {
+            try {
+                terminal = TerminalBuilder.builder().dumb(true).build();
+            } catch (IOException ignored) {}
+        }
+
+        System.out.print("\033[2J\033[H");
         System.out.flush();
-        // Demander a l'utilisateur le host et le port en direct
+
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        System.out.print("Enter server host (default: localhost): ");
-        String host = reader.readLine().trim();
+
+        System.out.print("Adresse du serveur (defaut: localhost) : ");
+        String host = reader.readLine();
+        if (host == null) return;
+        host = host.trim();
         if (host.isEmpty()) host = "localhost";
-        System.out.print("Enter server port (default: 25568): ");
-        String portStr = reader.readLine().trim();
+
+        System.out.print("Port (defaut: 25568) : ");
+        String portStr = reader.readLine();
+        if (portStr == null) return;
+        portStr = portStr.trim();
         int port = 25568;
         if (!portStr.isEmpty()) {
             try {
                 port = Integer.parseInt(portStr);
             } catch (NumberFormatException e) {
-                System.out.println("Invalid port number, using default 25568.");
+                System.out.println("Port invalide, utilisation du port par defaut 25568.");
             }
         }
         if (port < 1 || port > 65535) {
-            System.out.println("Port number out of range, using default 25568.");
+            System.out.println("Port hors limites, utilisation du port par defaut 25568.");
             port = 25568;
         }
-        GameClient client = new GameClient(host, port);
+
+        GameClient client = new GameClient(host, port, terminal);
         try {
             client.connect();
         } catch (IOException e) {
-            System.err.println("Failed to connect to server: " + e.getMessage());
+            client.showFatalError("Impossible de se connecter : " + e.getMessage());
+            client.disconnect();
+            System.exit(1);
         }
-        if (client.isConnected()) {
 
+        while (client.isConnected()) {
+            String line = reader.readLine();
+            if (line == null) break;
+
+            line = line.trim().toUpperCase();
+
+            if (line.isEmpty()) {
+                client.userInputPending = true;
+                client.statusMessage = "Entrez une lettre.";
+                client.redraw();
+                continue;
+            }
+
+            char letter = line.charAt(0);
+            if (!Character.isLetter(letter)) {
+                client.userInputPending = true;
+                client.statusMessage = "Entrez une lettre valide (A-Z).";
+                client.redraw();
+                continue;
+            }
+
+            try {
+                client.userInputPending = true;
+                client.send(new Message(Message.Type.GUESS, "Client", String.valueOf(letter)));
+            } catch (IOException e) {
+                client.showFatalError("Erreur d'envoi : " + e.getMessage());
+                client.disconnect();
+                System.exit(1);
+            }
         }
+
+        client.disconnect();
+        System.out.println("\nDeconnecte. A bientot !");
     }
 }
