@@ -24,20 +24,29 @@ public class ClientHandler implements Runnable {
             out.flush();
             server.addClient(this);
 
-            send(new Message(Message.Type.CONNECT, "SERVER", "Welcome " + clientId));
-            server.broadcast(new Message(Message.Type.CONNECT, "SERVER", clientId + " joined the game"), this);
+            send(new Message(Message.Type.CONNECT, "SERVER", "Bienvenue " + clientId + " !"));
+            server.broadcast(new Message(Message.Type.CONNECT, "SERVER", clientId + " a rejoint la partie"), this);
+            server.sendCurrentStateTo(this);
 
             while (true) {
                 Message msg = (Message) in.readObject();
                 System.out.println("[SERVER] Received from " + clientId + ": " + msg);
-                server.broadcast(msg, null);
+
+                if (msg.getType() == Message.Type.GUESS) {
+                    String content = msg.getContent();
+                    if (!content.isEmpty()) {
+                        server.guessLetter(content.charAt(0), this);
+                    }
+                } else {
+                    server.broadcast(msg, null);
+                }
             }
         } catch (EOFException | java.net.SocketException ignored) {
         } catch (IOException | ClassNotFoundException e) {
             System.err.println("[SERVER] Error with " + clientId + ": " + e.getMessage());
         } finally {
             server.removeClient(this);
-            server.broadcast(new Message(Message.Type.DISCONNECT, "SERVER", clientId + " left the game"), this);
+            server.broadcast(new Message(Message.Type.DISCONNECT, "SERVER", clientId + " a quitte la partie"), this);
             closeSocket();
         }
     }
