@@ -1,6 +1,8 @@
 package org.example.server;
 
 import org.example.common.Message;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -11,6 +13,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class GameServer {
+
+    private static final Logger logger = LoggerFactory.getLogger(GameServer.class);
 
     public static final int DEFAULT_PORT = 25568;
     private static final int MAX_CLIENTS = 10;
@@ -36,7 +40,7 @@ public class GameServer {
     private List<String> loadWordList() {
         try (var stream = getClass().getResourceAsStream("/francais.txt")) {
             if (stream == null) {
-                System.err.println("[SERVER] Word list not found");
+                logger.error("Word list not found");
                 System.exit(1);
             }
             try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(stream))) {
@@ -45,13 +49,13 @@ public class GameServer {
                         .filter(s -> !s.isBlank())
                         .toList();
                 if (words.isEmpty()) {
-                    System.err.println("[SERVER] Word list is empty");
+                    logger.error("Word list is empty");
                     System.exit(1);
                 }
                 return words;
             }
         } catch (IOException e) {
-            System.err.println("[SERVER] Error reading word list: " + e.getMessage());
+            logger.error("Error reading word list: {}", e.getMessage());
             System.exit(1);
         }
         return List.of();
@@ -60,17 +64,17 @@ public class GameServer {
     public void start() throws IOException {
         serverSocket = new ServerSocket(port);
         running = true;
-        System.out.println("[SERVER] Started on port " + port);
+        logger.info("Started on port {}", port);
         while (running) {
             try {
                 Socket clientSocket = serverSocket.accept();
-                String clientId = "Player-" + clientCounter.incrementAndGet();
-                System.out.println("[SERVER] New connection: " + clientId + " (" + clientSocket.getInetAddress() + ")");
-                ClientHandler handler = new ClientHandler(clientSocket, this, clientId);
+                String fallbackId = "Player-" + clientCounter.incrementAndGet();
+                logger.info("New connection from {})", clientSocket.getInetAddress());
+                ClientHandler handler = new ClientHandler(clientSocket, this, fallbackId);
                 threadPool.submit(handler);
             } catch (IOException e) {
                 if (running) {
-                    System.err.println("[SERVER] Accept error: " + e.getMessage());
+                    logger.error("Accept error: {}", e.getMessage());
                 }
             }
         }
@@ -117,14 +121,14 @@ public class GameServer {
         }
 
         if (correct) {
-            broadcast(new Message(Message.Type.CURRENT_WORD, "Server", wordDisplay, capturedErrorCount, usedLettersStr), null);
+            broadcast(new Message(Message.Type.CURRENT_WORD, sender.getClientId(), wordDisplay, capturedErrorCount, usedLettersStr), null);
         } else {
-            broadcast(new Message(Message.Type.GUESS, "Server", String.valueOf(letter), capturedErrorCount, usedLettersStr), null);
+            broadcast(new Message(Message.Type.GUESS, sender.getClientId(), String.valueOf(letter), capturedErrorCount, usedLettersStr), null);
         }
 
         if (gameOver) {
             Message endMsg = correct
-                    ? new Message(Message.Type.WIN, "Server", "Bravo! Le mot etait: " + capturedWord)
+                    ? new Message(Message.Type.WIN, sender.getClientId(), "Le mot etait: " + capturedWord)
                     : new Message(Message.Type.LOSE, "Server", "Perdu! Le mot etait: " + capturedWord);
             broadcast(endMsg, null);
 
@@ -164,7 +168,7 @@ public class GameServer {
             if (serverSocket != null) serverSocket.close();
         } catch (IOException ignored) {
         }
-        System.out.println("[SERVER] Stopped.");
+        logger.info("Stopped.");
     }
 
     public void broadcast(Message msg, ClientHandler exclude) {
@@ -193,7 +197,7 @@ public class GameServer {
 
     public void removeClient(ClientHandler handler) {
         clients.remove(handler);
-        System.out.println("[SERVER] " + handler.getClientId() + " disconnected. Active clients: " + clients.size());
+        logger.info("{} disconnected. Active clients: {}", handler.getClientId(), clients.size());
     }
 
     public int getClientCount() {
@@ -209,7 +213,7 @@ public class GameServer {
         errorCount = 0;
         guessedLetters.clear();
         currentWordDisplay = buildWordDisplay();
-        System.out.println("[SERVER] New word selected: " + currentWord);
+        logger.info("New word selected: {}", currentWord);
     }
 
     public static void main(String[] args) throws IOException {
@@ -218,7 +222,7 @@ public class GameServer {
             Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
             server.start();
         } catch (IOException e) {
-            System.err.println("[SERVER] Failed to start: " + e.getMessage());
+            LoggerFactory.getLogger(GameServer.class).error("Failed to start: {}", e.getMessage());
         }
     }
 }

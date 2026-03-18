@@ -1,20 +1,24 @@
 package org.example.server;
 
 import org.example.common.Message;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.net.Socket;
 
 public class ClientHandler implements Runnable {
 
+    private static final Logger logger = LoggerFactory.getLogger(ClientHandler.class);
+
     private final Socket socket;
     private final GameServer server;
-    private final String clientId;
+    private volatile String clientId;
     private ObjectOutputStream out;
 
-    public ClientHandler(Socket socket, GameServer server, String clientId) {
+    public ClientHandler(Socket socket, GameServer server, String fallbackId) {
         this.socket = socket;
         this.server = server;
-        this.clientId = clientId;
+        this.clientId = fallbackId;
     }
 
     @Override
@@ -22,6 +26,16 @@ public class ClientHandler implements Runnable {
         try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
             out = new ObjectOutputStream(socket.getOutputStream());
             out.flush();
+
+            Message connectMsg = (Message) in.readObject();
+            if (connectMsg.getType() == Message.Type.CONNECT) {
+                String candidate = connectMsg.getContent().trim();
+                if (candidate.matches("[A-Za-z0-9\\-]{1,16}")) {
+                    clientId = candidate;
+                }
+            }
+            logger.info("Player identified as: {}", clientId);
+
             server.addClient(this);
 
             send(new Message(Message.Type.CONNECT, "SERVER", "Bienvenue " + clientId + " !"));
@@ -30,7 +44,7 @@ public class ClientHandler implements Runnable {
 
             while (true) {
                 Message msg = (Message) in.readObject();
-                System.out.println("[SERVER] Received from " + clientId + ": " + msg);
+                logger.debug("Received from {}: {}", clientId, msg);
 
                 if (msg.getType() == Message.Type.GUESS) {
                     String content = msg.getContent();
@@ -43,7 +57,7 @@ public class ClientHandler implements Runnable {
             }
         } catch (EOFException | java.net.SocketException ignored) {
         } catch (IOException | ClassNotFoundException e) {
-            System.err.println("[SERVER] Error with " + clientId + ": " + e.getMessage());
+            logger.error("Error with {}: {}", clientId, e.getMessage());
         } finally {
             server.removeClient(this);
             server.broadcast(new Message(Message.Type.DISCONNECT, "SERVER", clientId + " a quitte la partie"), this);
@@ -58,7 +72,7 @@ public class ClientHandler implements Runnable {
                 out.flush();
             }
         } catch (IOException e) {
-            System.err.println("[SERVER] Cannot send to " + clientId + ": " + e.getMessage());
+            logger.error("Cannot send to {}: {}", clientId, e.getMessage());
         }
     }
 

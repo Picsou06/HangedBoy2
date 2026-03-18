@@ -1,13 +1,18 @@
 package org.example.client;
 
 import org.example.common.Message;
+import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.net.Socket;
 
 public class GameClient {
+
+    private static final Logger logger = LoggerFactory.getLogger(GameClient.class);
 
     private static final String[][] HANGMAN_STAGES = {
         {"       ", "       ", "       ", "       ", "       ", "       ", "       "},
@@ -34,6 +39,7 @@ public class GameClient {
     private volatile int errorCount = 0;
     private volatile String usedLetters = "";
     private volatile String statusMessage = "Connexion au serveur...";
+    private volatile String lastProposer = "";
 
     private Terminal terminal;
 
@@ -88,25 +94,30 @@ public class GameClient {
                 currentWordDisplay = msg.getContent();
                 errorCount = msg.getErrorCount();
                 usedLetters = msg.getUsedLetters();
-                if (statusMessage.equals("Connexion au serveur...")) {
+                if (!msg.getSenderId().equals("SERVER")) {
+                    lastProposer = msg.getSenderId();
+                    statusMessage = msg.getSenderId() + " a trouve une lettre !";
+                } else if (statusMessage.equals("Connexion au serveur...")) {
                     statusMessage = "Devinez le mot !";
                 }
             }
             case GUESS -> {
                 errorCount = msg.getErrorCount();
                 usedLetters = msg.getUsedLetters();
-                statusMessage = "Mauvaise lettre : " + msg.getContent();
+                lastProposer = msg.getSenderId();
+                statusMessage = msg.getSenderId() + " : mauvaise lettre (" + msg.getContent() + ")";
             }
             case ERROR -> {
                 errorCount = msg.getErrorCount();
                 usedLetters = msg.getUsedLetters();
             }
-            case WIN  -> statusMessage = "BRAVO ! " + msg.getContent();
+            case WIN  -> statusMessage = "BRAVO " + msg.getSenderId() + " ! " + msg.getContent();
             case LOSE -> statusMessage = "PERDU... " + msg.getContent();
             case NEW_GAME -> {
                 currentWordDisplay = msg.getContent();
                 errorCount = 0;
                 usedLetters = "";
+                lastProposer = "";
                 statusMessage = "Nouvelle partie ! Devinez le mot.";
             }
             default -> statusMessage = msg.getContent();
@@ -166,7 +177,7 @@ public class GameClient {
             "",
             "Lettres:  " + (usedLetters.isEmpty() ? "aucune" : usedLetters),
             "Erreurs:  " + errorCount + " / " + Message.MAX_ERRORS,
-            "",
+            "Dernier:  " + (lastProposer.isEmpty() ? "-" : lastProposer),
             ""
         };
 
@@ -196,6 +207,8 @@ public class GameClient {
             sb.append("\033[").append(linesToGoUp).append("A");
             sb.append("\r");
             sb.append("\033[J");
+        } else {
+            sb.append("\033[2J\033[H");
         }
         userInputPending = false;
         lastLineCount = newlineCount;
@@ -244,6 +257,16 @@ public class GameClient {
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
 
+        String pseudo;
+        while (true) {
+            System.out.print("Votre pseudo : ");
+            pseudo = reader.readLine();
+            if (pseudo == null) return;
+            pseudo = pseudo.trim();
+            if (pseudo.matches("[A-Za-z0-9\\-]{1,16}")) break;
+            logger.warn("Pseudo invalide. Utilisez uniquement des lettres, chiffres et '-' (1-16 caracteres).");
+        }
+
         System.out.print("Adresse du serveur (defaut: localhost) : ");
         String host = reader.readLine();
         if (host == null) return;
@@ -259,55 +282,57 @@ public class GameClient {
             try {
                 port = Integer.parseInt(portStr);
             } catch (NumberFormatException e) {
-                System.out.println("Port invalide, utilisation du port par defaut 25568.");
+                logger.warn("Port invalide, utilisation du port par defaut 25568.");
             }
         }
         if (port < 1 || port > 65535) {
-            System.out.println("Port hors limites, utilisation du port par defaut 25568.");
+            logger.warn("Port hors limites, utilisation du port par defaut 25568.");
             port = 25568;
         }
 
+        final String finalPseudo = pseudo;
         GameClient client = new GameClient(host, port, terminal);
         try {
             client.connect();
+            client.send(new Message(Message.Type.CONNECT, finalPseudo, finalPseudo));
         } catch (IOException e) {
             client.showFatalError("Impossible de se connecter : " + e.getMessage());
             client.disconnect();
             System.exit(1);
         }
 
-        while (client.isConnected()) {
-            String line = reader.readLine();
-            if (line == null) break;
+        Attributes savedAttributes = terminal != null ? terminal.enterRawMode() : null;
+        try {
+            java.io.Reader gameReader = terminal != null
+                    ? terminal.reader()
+                    : new InputStreamReader(System.in);
 
-            line = line.trim().toUpperCase();
+            while (client.isConnected()) {
+                int c = gameReader.read();
+                if (c == -1 || c == 3 /* Ctrl+C */ || c == 4 /* Ctrl+D */) break;
 
-            if (line.isEmpty()) {
-                client.userInputPending = true;
-                client.statusMessage = "Entrez une lettre.";
-                client.redraw();
-                continue;
+                char letter = Character.toUpperCase((char) c);
+                if (!Character.isLetter(letter)) {
+                    client.statusMessage = "Entrez une lettre valide (A-Z).";
+                    client.redraw();
+                    continue;
+                }
+
+                try {
+                    client.send(new Message(Message.Type.GUESS, finalPseudo, String.valueOf(letter)));
+                } catch (IOException e) {
+                    client.showFatalError("Erreur d'envoi : " + e.getMessage());
+                    client.disconnect();
+                    System.exit(1);
+                }
             }
-
-            char letter = line.charAt(0);
-            if (!Character.isLetter(letter)) {
-                client.userInputPending = true;
-                client.statusMessage = "Entrez une lettre valide (A-Z).";
-                client.redraw();
-                continue;
-            }
-
-            try {
-                client.userInputPending = true;
-                client.send(new Message(Message.Type.GUESS, "Client", String.valueOf(letter)));
-            } catch (IOException e) {
-                client.showFatalError("Erreur d'envoi : " + e.getMessage());
-                client.disconnect();
-                System.exit(1);
+        } finally {
+            if (terminal != null && savedAttributes != null) {
+                terminal.setAttributes(savedAttributes);
             }
         }
 
         client.disconnect();
-        System.out.println("\nDeconnecte. A bientot !");
+        logger.info("Deconnecte. A bientot !");
     }
 }
