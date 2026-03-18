@@ -1,0 +1,49 @@
+image: maven:3.8.7-openjdk-18
+
+stages:
+  - test
+  - build
+  - exec
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+
+default:
+  tags:
+    - dind
+  cache:
+    paths:
+      - .m2/repository
+
+test:
+  stage: test
+  script:
+    - mvn test
+
+build:
+  stage: build
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: always
+    - when: never
+  script:
+    - mvn package -DskipTests
+  artifacts:
+    name: "hangedboy2-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - server/target/server-standalone.jar
+      - client/target/client-standalone.jar
+    expire_in: never
+
+exec:
+  stage: exec
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: always
+    - when: never
+  script:
+    - java -jar server/target/server-standalone.jar &
+    - SERVER_PID=$!
+    - sleep 2
+    - printf "A\nB\nC\n" | java -jar client/target/client-standalone.jar CIBot localhost 25568
+    - kill $SERVER_PID || true

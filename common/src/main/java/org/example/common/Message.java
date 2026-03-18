@@ -7,6 +7,7 @@ public class Message implements Serializable {
     private static final long serialVersionUID = 2L;
 
     public static final int MAX_ERRORS = 10;
+    public static final String SERVER_ID = "SERVER";
 
     public enum Type {
         CONNECT, DISCONNECT, GUESS, NEW_GAME, WIN, LOSE, CURRENT_WORD, ERROR
@@ -30,11 +31,25 @@ public class Message implements Serializable {
         this.usedLetters = usedLetters != null ? usedLetters : "";
     }
 
-    public Type getType() { return type; }
-    public String getSenderId() { return senderId; }
-    public String getContent() { return content; }
-    public int getErrorCount() { return errorCount; }
-    public String getUsedLetters() { return usedLetters; }
+    public Type getType() {
+        return type;
+    }
+
+    public String getSenderId() {
+        return senderId;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public int getErrorCount() {
+        return errorCount;
+    }
+
+    public String getUsedLetters() {
+        return usedLetters;
+    }
 
     @Override
     public String toString() {

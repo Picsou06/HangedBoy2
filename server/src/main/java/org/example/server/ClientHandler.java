@@ -3,8 +3,13 @@ package org.example.server;
 import org.example.common.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.io.*;
+
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.net.SocketException;
 
 public class ClientHandler implements Runnable {
 
@@ -38,8 +43,8 @@ public class ClientHandler implements Runnable {
 
             server.addClient(this);
 
-            send(new Message(Message.Type.CONNECT, "SERVER", "Bienvenue " + clientId + " !"));
-            server.broadcast(new Message(Message.Type.CONNECT, "SERVER", clientId + " a rejoint la partie"), this);
+            send(new Message(Message.Type.CONNECT, Message.SERVER_ID, "Bienvenue " + clientId + " !"));
+            server.broadcast(new Message(Message.Type.CONNECT, Message.SERVER_ID, clientId + " a rejoint la partie"), this);
             server.sendCurrentStateTo(this);
 
             while (true) {
@@ -55,12 +60,12 @@ public class ClientHandler implements Runnable {
                     server.broadcast(msg, null);
                 }
             }
-        } catch (EOFException | java.net.SocketException ignored) {
+        } catch (EOFException | SocketException ignored) {
         } catch (IOException | ClassNotFoundException e) {
             logger.error("Error with {}: {}", clientId, e.getMessage());
         } finally {
             server.removeClient(this);
-            server.broadcast(new Message(Message.Type.DISCONNECT, "SERVER", clientId + " a quitte la partie"), this);
+            server.broadcast(new Message(Message.Type.DISCONNECT, Message.SERVER_ID, clientId + " a quitte la partie"), this);
             closeSocket();
         }
     }
@@ -82,10 +87,14 @@ public class ClientHandler implements Runnable {
 
     private void closeSocket() {
         try {
-            if (!socket.isClosed()) socket.close();
+            if (!socket.isClosed()) {
+                socket.close();
+            }
         } catch (IOException ignored) {
         }
     }
 
-    public String getClientId() { return clientId; }
+    public String getClientId() {
+        return clientId;
+    }
 }

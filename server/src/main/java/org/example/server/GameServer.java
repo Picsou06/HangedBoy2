@@ -3,14 +3,22 @@ package org.example.server;
 import org.example.common.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 public class GameServer {
 
@@ -18,6 +26,8 @@ public class GameServer {
 
     public static final int DEFAULT_PORT = 25568;
     private static final int MAX_CLIENTS = 10;
+
+    private static final Random RANDOM = new Random();
 
     private final int port;
     private final List<String> wordList;
@@ -28,7 +38,7 @@ public class GameServer {
     private volatile boolean running = false;
     private String currentWord;
     private String currentWordDisplay;
-    private Set<Character> guessedLetters = new LinkedHashSet<>();
+    private final Set<Character> guessedLetters = new LinkedHashSet<>();
     private int errorCount = 0;
 
     public GameServer(int port) {
@@ -38,27 +48,28 @@ public class GameServer {
     }
 
     private List<String> loadWordList() {
-        try (var stream = getClass().getResourceAsStream("/francais.txt")) {
-            if (stream == null) {
-                logger.error("Word list not found");
+        var stream = getClass().getResourceAsStream("/francais.txt");
+        if (stream == null) {
+            logger.error("Word list not found");
+            System.exit(1);
+            return List.of();
+        }
+
+        try (var reader = new BufferedReader(new InputStreamReader(stream))) {
+            List<String> words = reader.lines()
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .toList();
+            if (words.isEmpty()) {
+                logger.error("Word list is empty");
                 System.exit(1);
             }
-            try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(stream))) {
-                List<String> words = reader.lines()
-                        .map(String::trim)
-                        .filter(s -> !s.isBlank())
-                        .toList();
-                if (words.isEmpty()) {
-                    logger.error("Word list is empty");
-                    System.exit(1);
-                }
-                return words;
-            }
+            return words;
         } catch (IOException e) {
             logger.error("Error reading word list: {}", e.getMessage());
             System.exit(1);
+            return List.of();
         }
-        return List.of();
     }
 
     public void start() throws IOException {
@@ -69,7 +80,7 @@ public class GameServer {
             try {
                 Socket clientSocket = serverSocket.accept();
                 String fallbackId = "Player-" + clientCounter.incrementAndGet();
-                logger.info("New connection from {})", clientSocket.getInetAddress());
+                logger.info("New connection from {}", clientSocket.getInetAddress());
                 ClientHandler handler = new ClientHandler(clientSocket, this, fallbackId);
                 threadPool.submit(handler);
             } catch (IOException e) {
@@ -94,7 +105,7 @@ public class GameServer {
             if (guessedLetters.contains(letter)) {
                 sender.send(new Message(
                         Message.Type.ERROR,
-                        "Server",
+                        Message.SERVER_ID,
                         "Lettre deja utilisee: " + letter,
                         errorCount,
                         getUsedLettersString()
@@ -129,17 +140,21 @@ public class GameServer {
         if (gameOver) {
             Message endMsg = correct
                     ? new Message(Message.Type.WIN, sender.getClientId(), "Le mot etait: " + capturedWord)
-                    : new Message(Message.Type.LOSE, "Server", "Perdu! Le mot etait: " + capturedWord);
+                    : new Message(Message.Type.LOSE, Message.SERVER_ID, "Perdu! Le mot etait: " + capturedWord);
             broadcast(endMsg, null);
 
-            try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
 
             final String newWordDisplay;
             synchronized (this) {
                 setNewWord();
                 newWordDisplay = currentWordDisplay;
             }
-            broadcast(new Message(Message.Type.NEW_GAME, "Server", newWordDisplay, 0, ""), null);
+            broadcast(new Message(Message.Type.NEW_GAME, Message.SERVER_ID, newWordDisplay, 0, ""), null);
         }
     }
 
@@ -165,7 +180,9 @@ public class GameServer {
             clients.clear();
         }
         try {
-            if (serverSocket != null) serverSocket.close();
+            if (serverSocket != null) {
+                serverSocket.close();
+            }
         } catch (IOException ignored) {
         }
         logger.info("Stopped.");
@@ -184,7 +201,7 @@ public class GameServer {
     public synchronized void sendCurrentStateTo(ClientHandler handler) {
         handler.send(new Message(
                 Message.Type.CURRENT_WORD,
-                "Server",
+                Message.SERVER_ID,
                 currentWordDisplay,
                 errorCount,
                 getUsedLettersString()
@@ -208,21 +225,21 @@ public class GameServer {
         return running;
     }
 
-    public void setNewWord() {
-        currentWord = wordList.get((int) (Math.random() * wordList.size())).toUpperCase();
+    private void setNewWord() {
+        currentWord = wordList.get(RANDOM.nextInt(wordList.size())).toUpperCase();
         errorCount = 0;
         guessedLetters.clear();
         currentWordDisplay = buildWordDisplay();
         logger.info("New word selected: {}", currentWord);
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         try {
             GameServer server = new GameServer(DEFAULT_PORT);
             Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
             server.start();
         } catch (IOException e) {
-            LoggerFactory.getLogger(GameServer.class).error("Failed to start: {}", e.getMessage());
+            logger.error("Failed to start: {}", e.getMessage());
         }
     }
 }
