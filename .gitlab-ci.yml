@@ -55,8 +55,9 @@ build:
 
 deploy:
   stage: deploy
-  image: gcr.io/kaniko-project/executor:debug
-  entrypoint: ["/bin/sh", "-c"]
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
   needs: [build]
   before_script:
     - mkdir -p /kaniko/.docker
