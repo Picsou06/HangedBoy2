@@ -6,7 +6,6 @@ stages:
 
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
-  DOCKER_TLS_CERTDIR: "/certs"
   SERVER_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-server
   CLIENT_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-client
 
@@ -60,11 +59,10 @@ deploy:
   services:
     - name: docker:24-dind
       alias: docker
+      command: ["--tls=false"]
   needs: [build]
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_VERIFY: 1
-    DOCKER_CERT_PATH: "/certs/client"
+    DOCKER_HOST: tcp://docker:2375
   before_script:
     - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
   script:
