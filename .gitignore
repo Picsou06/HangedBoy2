@@ -39,5 +39,5 @@ build/
 
 ### Secrets locaux ###
 .env
-/client/logs/client.log
 /TODO.md
+client.log

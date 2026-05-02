@@ -7,11 +7,21 @@
       <maxHistory>7</maxHistory>
     </rollingPolicy>
     <encoder>
-      <pattern>%d{HH:mm:ss} %-5level [%thread] %logger{0} - %msg%n</pattern>
+      <pattern>%d{HH:mm:ss} [%thread] %-5level %logger{0} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>WARN</level>
+    </filter>
+    <encoder>
+      <pattern>%msg%n</pattern>
     </encoder>
   </appender>
 
   <root level="INFO">
     <appender-ref ref="FILE"/>
+    <appender-ref ref="CONSOLE"/>
   </root>
 </configuration>

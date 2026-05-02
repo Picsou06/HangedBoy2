@@ -1,18 +1,28 @@
 package org.example.server;
 
-import org.example.common.Message;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
 import java.net.Socket;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import org.example.common.Message;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyChar;
+import org.mockito.Mock;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class ClientHandlerTest {
@@ -57,6 +67,7 @@ class ClientHandlerTest {
     @Test
     void testRunHandlesGuessMessageAndDelegatesToServer() throws Exception {
         ByteArrayInputStream bais = buildInputStream(
+            new Message(Message.Type.CONNECT, "client", "player1"),
                 new Message(Message.Type.GUESS, "client", "A"));
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
@@ -75,6 +86,7 @@ class ClientHandlerTest {
     @Test
     void testRunIgnoresEmptyGuessContent() throws Exception {
         ByteArrayInputStream bais = buildInputStream(
+            new Message(Message.Type.CONNECT, "client", "player1"),
                 new Message(Message.Type.GUESS, "client", ""));
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
@@ -91,6 +103,7 @@ class ClientHandlerTest {
     @Test
     void testRunBroadcastsNonGuessMessages() throws Exception {
         ByteArrayInputStream bais = buildInputStream(
+            new Message(Message.Type.CONNECT, "client", "player1"),
                 new Message(Message.Type.CONNECT, "client", "salut"));
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
@@ -102,7 +115,7 @@ class ClientHandlerTest {
         handler.run();
 
         ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
-        verify(mockServer, atLeastOnce()).broadcast(captor.capture(), isNull());
+        verify(mockServer, atLeastOnce()).broadcast(captor.capture(), any());
         assertTrue(captor.getAllValues().stream()
                 .anyMatch(m -> m.getType() == Message.Type.CONNECT
                         && "salut".equals(m.getContent())));
@@ -112,7 +125,8 @@ class ClientHandlerTest {
 
     @Test
     void testRunSendsWelcomeMessageToNewClient() throws Exception {
-        ByteArrayInputStream bais = buildInputStream();
+        ByteArrayInputStream bais = buildInputStream(
+            new Message(Message.Type.CONNECT, "client", "Alice"));
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
         when(mockSocket.getInputStream()).thenReturn(bais);

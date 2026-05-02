@@ -53,6 +53,19 @@
         <artifactId>maven-shade-plugin</artifactId>
         <configuration>
           <outputFile>${project.build.directory}/client-standalone.jar</outputFile>
+          <filters>
+            <filter>
+              <artifact>*:*</artifact>
+              <excludes>
+                <exclude>META-INF/LICENSE*</exclude>
+                <exclude>META-INF/NOTICE*</exclude>
+                <exclude>META-INF/DEPENDENCIES</exclude>
+                <exclude>META-INF/*.SF</exclude>
+                <exclude>META-INF/*.DSA</exclude>
+                <exclude>META-INF/*.RSA</exclude>
+              </excludes>
+            </filter>
+          </filters>
           <transformers>
             <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
               <mainClass>org.example.client.GameClient</mainClass>
@@ -60,6 +73,7 @@
                 <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
               </manifestEntries>
             </transformer>
+            <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
           </transformers>
         </configuration>
       </plugin>
