@@ -9,6 +9,8 @@ variables:
   DOCKER_TLS_CERTDIR: "/certs"
   SERVER_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-server
   CLIENT_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-client
+  SONAR_ORGANIZATION: "Picsou06"
+  SONAR_PROJECT_KEY: "Picsou06_HangedBoy2"
 
 default:
   tags:
@@ -33,7 +35,8 @@ sonarqube:
   needs: [test]
   script:
     - mvn verify sonar:sonar
-        -Dsonar.projectKey=hangedboy2
+        -Dsonar.projectKey=$SONAR_PROJECT_KEY
+        -Dsonar.organization=$SONAR_ORGANIZATION
         -Dsonar.token=$SONAR_TOKEN
   only:
     - main
