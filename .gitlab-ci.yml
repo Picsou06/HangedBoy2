@@ -10,6 +10,10 @@ variables:
   SERVER_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-server
   CLIENT_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-client
 
+default:
+  tags:
+    - dind
+
 cache:
   key: "$CI_COMMIT_REF_SLUG"
   paths:
