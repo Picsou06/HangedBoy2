@@ -1,0 +1,22 @@
+services:
+  server:
+    image: ${DOCKERHUB_USERNAME:-local}/hangedboy2-server:latest
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "25568:25568"
+
+  client:
+    image: ${DOCKERHUB_USERNAME:-local}/hangedboy2-client:latest
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      SERVER_HOST: server
+      SERVER_PORT: "25568"
+    stdin_open: true
+    tty: true

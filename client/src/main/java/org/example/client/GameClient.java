@@ -3,11 +3,17 @@ package org.example.client;
 import org.example.common.Message;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.net.Socket;
 
 public class GameClient {
+
+    private static final Logger log = LoggerFactory.getLogger(GameClient.class);
+
+    static final int DEFAULT_PORT = 25568;
 
     private static final String[][] HANGMAN_STAGES = {
         {"       ", "       ", "       ", "       ", "       ", "       ", "       "},
@@ -68,6 +74,7 @@ public class GameClient {
         } catch (IOException | ClassNotFoundException e) {
             if (connected) {
                 fatalError = "Erreur de reception : " + e.getMessage();
+                log.error("Reception error: {}", e.getMessage());
             }
         } finally {
             connected = false;
@@ -215,6 +222,7 @@ public class GameClient {
         if (!connected) throw new IOException("Not connected to server");
         out.writeObject(msg);
         out.flush();
+        out.reset();
     }
 
     public void disconnect() {
@@ -229,11 +237,23 @@ public class GameClient {
 
     public boolean isConnected() { return connected; }
 
+    private static int parsePort(String value, int defaultPort) {
+        try {
+            int p = Integer.parseInt(value.trim());
+            if (p >= 1 && p <= 65535) return p;
+            log.warn("Port hors limites ({}), utilisation du port par defaut {}.", value.trim(), defaultPort);
+        } catch (NumberFormatException ignored) {
+            log.warn("Port invalide ({}), utilisation du port par defaut {}.", value, defaultPort);
+        }
+        return defaultPort;
+    }
+
     public static void main(String[] args) throws IOException {
         Terminal terminal = null;
         try {
             terminal = TerminalBuilder.builder().system(true).build();
         } catch (IOException e) {
+            log.warn("System terminal unavailable, falling back to dumb terminal");
             try {
                 terminal = TerminalBuilder.builder().dumb(true).build();
             } catch (IOException ignored) {}
@@ -244,27 +264,31 @@ public class GameClient {
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
 
-        System.out.print("Adresse du serveur (defaut: localhost) : ");
-        String host = reader.readLine();
-        if (host == null) return;
-        host = host.trim();
-        if (host.isEmpty()) host = "localhost";
+        String host;
+        int port = DEFAULT_PORT;
 
-        System.out.print("Port (defaut: 25568) : ");
-        String portStr = reader.readLine();
-        if (portStr == null) return;
-        portStr = portStr.trim();
-        int port = 25568;
-        if (!portStr.isEmpty()) {
-            try {
-                port = Integer.parseInt(portStr);
-            } catch (NumberFormatException e) {
-                System.out.println("Port invalide, utilisation du port par defaut 25568.");
+        String envHost = System.getenv("SERVER_HOST");
+        String envPort = System.getenv("SERVER_PORT");
+
+        if (envHost != null && !envHost.isBlank()) {
+            host = envHost.trim();
+            if (envPort != null && !envPort.isBlank()) {
+                port = parsePort(envPort, DEFAULT_PORT);
             }
-        }
-        if (port < 1 || port > 65535) {
-            System.out.println("Port hors limites, utilisation du port par defaut 25568.");
-            port = 25568;
+        } else {
+            System.out.print("Adresse du serveur (defaut: localhost) : ");
+            String input = reader.readLine();
+            if (input == null) return;
+            input = input.trim();
+            host = input.isEmpty() ? "localhost" : input;
+
+            System.out.print("Port (defaut: " + DEFAULT_PORT + ") : ");
+            String portStr = reader.readLine();
+            if (portStr == null) return;
+            portStr = portStr.trim();
+            if (!portStr.isEmpty()) {
+                port = parsePort(portStr, DEFAULT_PORT);
+            }
         }
 
         GameClient client = new GameClient(host, port, terminal);
@@ -308,6 +332,6 @@ public class GameClient {
         }
 
         client.disconnect();
-        System.out.println("\nDeconnecte. A bientot !");
+        log.info("Deconnecte. A bientot !");
     }
 }

@@ -1,10 +1,14 @@
 package org.example.server;
 
 import org.example.common.Message;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.net.Socket;
 
 public class ClientHandler implements Runnable {
+
+    private static final Logger log = LoggerFactory.getLogger(ClientHandler.class);
 
     private final Socket socket;
     private final GameServer server;
@@ -30,7 +34,7 @@ public class ClientHandler implements Runnable {
 
             while (true) {
                 Message msg = (Message) in.readObject();
-                System.out.println("[SERVER] Received from " + clientId + ": " + msg);
+                log.debug("Received from {}: {}", clientId, msg);
 
                 if (msg.getType() == Message.Type.GUESS) {
                     String content = msg.getContent();
@@ -43,7 +47,7 @@ public class ClientHandler implements Runnable {
             }
         } catch (EOFException | java.net.SocketException ignored) {
         } catch (IOException | ClassNotFoundException e) {
-            System.err.println("[SERVER] Error with " + clientId + ": " + e.getMessage());
+            log.error("Error with {}: {}", clientId, e.getMessage());
         } finally {
             server.removeClient(this);
             server.broadcast(new Message(Message.Type.DISCONNECT, "SERVER", clientId + " a quitte la partie"), this);
@@ -56,9 +60,10 @@ public class ClientHandler implements Runnable {
             if (out != null) {
                 out.writeObject(msg);
                 out.flush();
+                out.reset();
             }
         } catch (IOException e) {
-            System.err.println("[SERVER] Cannot send to " + clientId + ": " + e.getMessage());
+            log.warn("Cannot send to {}: {}", clientId, e.getMessage());
         }
     }
 

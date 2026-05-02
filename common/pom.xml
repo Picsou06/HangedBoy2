@@ -10,7 +10,7 @@
   </parent>
 
   <artifactId>common</artifactId>
-  <name>DinoRunner2 - Common</name>
+  <name>HangedBoy2 - Common</name>
 
   <dependencies>
     <dependency>

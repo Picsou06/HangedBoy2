@@ -1,6 +1,8 @@
 package org.example.server;
 
 import org.example.common.Message;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -11,6 +13,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class GameServer {
+
+    private static final Logger log = LoggerFactory.getLogger(GameServer.class);
 
     public static final int DEFAULT_PORT = 25568;
     private static final int MAX_CLIENTS = 10;
@@ -36,7 +40,7 @@ public class GameServer {
     private List<String> loadWordList() {
         try (var stream = getClass().getResourceAsStream("/francais.txt")) {
             if (stream == null) {
-                System.err.println("[SERVER] Word list not found");
+                log.error("Word list not found");
                 System.exit(1);
             }
             try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(stream))) {
@@ -45,13 +49,13 @@ public class GameServer {
                         .filter(s -> !s.isBlank())
                         .toList();
                 if (words.isEmpty()) {
-                    System.err.println("[SERVER] Word list is empty");
+                    log.error("Word list is empty");
                     System.exit(1);
                 }
                 return words;
             }
         } catch (IOException e) {
-            System.err.println("[SERVER] Error reading word list: " + e.getMessage());
+            log.error("Error reading word list: {}", e.getMessage());
             System.exit(1);
         }
         return List.of();
@@ -60,17 +64,17 @@ public class GameServer {
     public void start() throws IOException {
         serverSocket = new ServerSocket(port);
         running = true;
-        System.out.println("[SERVER] Started on port " + port);
+        log.info("Started on port {}", port);
         while (running) {
             try {
                 Socket clientSocket = serverSocket.accept();
                 String clientId = "Player-" + clientCounter.incrementAndGet();
-                System.out.println("[SERVER] New connection: " + clientId + " (" + clientSocket.getInetAddress() + ")");
+                log.info("New connection: {} ({})", clientId, clientSocket.getInetAddress());
                 ClientHandler handler = new ClientHandler(clientSocket, this, clientId);
                 threadPool.submit(handler);
             } catch (IOException e) {
                 if (running) {
-                    System.err.println("[SERVER] Accept error: " + e.getMessage());
+                    log.error("Accept error: {}", e.getMessage());
                 }
             }
         }
@@ -128,7 +132,7 @@ public class GameServer {
                     : new Message(Message.Type.LOSE, "Server", "Perdu! Le mot etait: " + capturedWord);
             broadcast(endMsg, null);
 
-            try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
+            try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
             final String newWordDisplay;
             synchronized (this) {
@@ -164,16 +168,16 @@ public class GameServer {
             if (serverSocket != null) serverSocket.close();
         } catch (IOException ignored) {
         }
-        System.out.println("[SERVER] Stopped.");
+        log.info("Stopped.");
     }
 
     public void broadcast(Message msg, ClientHandler exclude) {
+        List<ClientHandler> snapshot;
         synchronized (clients) {
-            for (ClientHandler client : clients) {
-                if (client != exclude) {
-                    client.send(msg);
-                }
-            }
+            snapshot = new ArrayList<>(clients);
+        }
+        for (ClientHandler client : snapshot) {
+            if (client != exclude) client.send(msg);
         }
     }
 
@@ -193,7 +197,7 @@ public class GameServer {
 
     public void removeClient(ClientHandler handler) {
         clients.remove(handler);
-        System.out.println("[SERVER] " + handler.getClientId() + " disconnected. Active clients: " + clients.size());
+        log.info("{} disconnected. Active clients: {}", handler.getClientId(), clients.size());
     }
 
     public int getClientCount() {
@@ -209,7 +213,7 @@ public class GameServer {
         errorCount = 0;
         guessedLetters.clear();
         currentWordDisplay = buildWordDisplay();
-        System.out.println("[SERVER] New word selected: " + currentWord);
+        log.debug("New word selected: {}", currentWord);
     }
 
     public static void main(String[] args) throws IOException {
@@ -218,7 +222,7 @@ public class GameServer {
             Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
             server.start();
         } catch (IOException e) {
-            System.err.println("[SERVER] Failed to start: " + e.getMessage());
+            log.error("Failed to start: {}", e.getMessage());
         }
     }
 }

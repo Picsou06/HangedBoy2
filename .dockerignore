@@ -1,0 +1,9 @@
+.git
+.gitignore
+.idea
+.claude
+**/target
+!server/target/server-standalone.jar
+!client/target/client-standalone.jar
+subject.pdf
+TODO.md

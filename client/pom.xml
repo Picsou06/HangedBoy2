@@ -10,7 +10,7 @@
   </parent>
 
   <artifactId>client</artifactId>
-  <name>DinoRunner2 - Client</name>
+  <name>HangedBoy2 - Client</name>
 
   <dependencies>
     <dependency>
@@ -23,6 +23,14 @@
       <version>3.25.1</version>
     </dependency>
     <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.example</groupId>
       <artifactId>server</artifactId>
       <version>${project.version}</version>
@@ -31,6 +39,10 @@
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-junit-jupiter</artifactId>
     </dependency>
   </dependencies>
 

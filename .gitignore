@@ -36,3 +36,8 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Secrets locaux ###
+.env
+/client/logs/client.log
+/TODO.md

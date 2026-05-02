@@ -1,0 +1,78 @@
+stages:
+  - test
+  - sonarqube
+  - build
+  - deploy
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  DOCKER_TLS_CERTDIR: "/certs"
+  SERVER_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-server
+  CLIENT_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-client
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - .m2/repository/
+
+test:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17
+  script:
+    - mvn test
+  only:
+    - main
+
+sonarqube:
+  stage: sonarqube
+  image: maven:3.9-eclipse-temurin-17
+  needs: [test]
+  script:
+    - mvn verify sonar:sonar
+        -Dsonar.projectKey=hangedboy2
+        -Dsonar.token=$SONAR_TOKEN
+  only:
+    - main
+
+build:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17
+  needs: [sonarqube]
+  script:
+    - mvn package -DskipTests
+  artifacts:
+    name: "jars-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - server/target/server-standalone.jar
+      - client/target/client-standalone.jar
+    expire_in: 1 week
+  only:
+    - main
+
+deploy:
+  stage: deploy
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      alias: docker
+  needs: [build]
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: "/certs/client"
+  before_script:
+    - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+  script:
+    - docker compose build
+    - docker compose up -d
+    - sleep 10
+    - docker compose ps
+    - docker compose down
+    - docker tag $SERVER_IMAGE:latest $SERVER_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker tag $CLIENT_IMAGE:latest $CLIENT_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $SERVER_IMAGE:latest
+    - docker push $SERVER_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $CLIENT_IMAGE:latest
+    - docker push $CLIENT_IMAGE:$CI_COMMIT_SHORT_SHA
+  only:
+    - main
