@@ -9,8 +9,6 @@ variables:
   DOCKER_TLS_CERTDIR: "/certs"
   SERVER_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-server
   CLIENT_IMAGE: $DOCKERHUB_USERNAME/hangedboy2-client
-  SONAR_ORGANIZATION: "Picsou06"
-  SONAR_PROJECT_KEY: "Picsou06_HangedBoy2"
 
 default:
   tags:
