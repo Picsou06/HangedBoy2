@@ -55,27 +55,16 @@ build:
 
 deploy:
   stage: deploy
-  image: docker:24
-  services:
-    - name: docker:24-dind
-      alias: docker
-      command: ["--tls=false"]
+  image: gcr.io/kaniko-project/executor:debug
   needs: [build]
-  variables:
-    DOCKER_HOST: tcp://docker:2375
   before_script:
-    - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+    - mkdir -p /kaniko/.docker
+    - |
+      cat > /kaniko/.docker/config.json <<EOF
+      {"auths":{"https://index.docker.io/v1/":{"username":"$DOCKERHUB_USERNAME","password":"$DOCKERHUB_TOKEN"}}}
+      EOF
   script:
-    - docker compose build
-    - docker compose up -d
-    - sleep 10
-    - docker compose ps
-    - docker compose down
-    - docker tag $SERVER_IMAGE:latest $SERVER_IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker tag $CLIENT_IMAGE:latest $CLIENT_IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker push $SERVER_IMAGE:latest
-    - docker push $SERVER_IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker push $CLIENT_IMAGE:latest
-    - docker push $CLIENT_IMAGE:$CI_COMMIT_SHORT_SHA
+    - /kaniko/executor --context "$CI_PROJECT_DIR" --dockerfile "$CI_PROJECT_DIR/server/Dockerfile" --destination "$SERVER_IMAGE:latest" --destination "$SERVER_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - /kaniko/executor --context "$CI_PROJECT_DIR" --dockerfile "$CI_PROJECT_DIR/client/Dockerfile" --destination "$CLIENT_IMAGE:latest" --destination "$CLIENT_IMAGE:$CI_COMMIT_SHORT_SHA"
   only:
     - main
