@@ -232,8 +232,16 @@ public class GameServer {
     }
 
     public static void main(String[] args) {
+        int port = DEFAULT_PORT;
+        if (args.length >= 1) {
+            try {
+                port = Integer.parseInt(args[0]);
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid port argument: {}. Using default port {}", args[0], DEFAULT_PORT);
+            }
+        }
         try {
-            GameServer server = new GameServer(DEFAULT_PORT);
+            GameServer server = new GameServer(port);
             Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
             server.start();
         } catch (IOException e) {
