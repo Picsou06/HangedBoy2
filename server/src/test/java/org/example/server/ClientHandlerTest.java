@@ -9,6 +9,7 @@ import java.lang.reflect.Field;
 import java.net.Socket;
 
 import org.example.common.Message;
+import org.example.common.SecureObjectInputStream;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -50,7 +51,7 @@ class ClientHandlerTest {
         Message msg = new Message(Message.Type.CONNECT, "SERVER", "Bienvenue !");
         handler.send(msg);
 
-        ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(baos.toByteArray()));
+        ObjectInputStream ois = new SecureObjectInputStream(new ByteArrayInputStream(baos.toByteArray()));
         Message received = (Message) ois.readObject();
 
         assertEquals(Message.Type.CONNECT, received.getType());
@@ -136,7 +137,7 @@ class ClientHandlerTest {
         ClientHandler handler = new ClientHandler(mockSocket, mockServer, "Alice");
         handler.run();
 
-        ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(baos.toByteArray()));
+        ObjectInputStream ois = new SecureObjectInputStream(new ByteArrayInputStream(baos.toByteArray()));
         Message welcome = (Message) ois.readObject();
 
         assertEquals(Message.Type.CONNECT, welcome.getType());
