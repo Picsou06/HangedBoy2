@@ -47,7 +47,7 @@ public class ClientHandler implements Runnable {
             server.broadcast(new Message(Message.Type.CONNECT, Message.SERVER_ID, clientId + " a rejoint la partie"), this);
             server.sendCurrentStateTo(this);
 
-            while (true) {
+            while (!socket.isClosed()) {
                 Message msg = (Message) in.readObject();
                 logger.debug("Received from {}: {}", clientId, msg);
 
