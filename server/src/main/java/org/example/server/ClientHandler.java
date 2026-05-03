@@ -2,6 +2,7 @@ package org.example.server;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
@@ -29,6 +30,12 @@ public class ClientHandler implements Runnable {
     @Override
     public void run() {
         try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+            
+            ObjectInputFilter filter = ObjectInputFilter.Config.createFilter(
+                "org.example.common.Message;org.example.common.Message$Type;java.lang.Enum;java.lang.String;!*"
+            );
+            in.setObjectInputFilter(filter);
+
             out = new ObjectOutputStream(socket.getOutputStream());
             out.flush();
 

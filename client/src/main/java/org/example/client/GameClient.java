@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Reader;
@@ -74,6 +75,12 @@ public class GameClient {
     private void listenForMessages() {
         String fatalError = null;
         try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+            
+            ObjectInputFilter filter = ObjectInputFilter.Config.createFilter(
+                "org.example.common.Message;org.example.common.Message$Type;java.lang.Enum;java.lang.String;!*"
+            );
+            in.setObjectInputFilter(filter);
+
             while (connected) {
                 Message msg = (Message) in.readObject();
                 handleMessage(msg);
